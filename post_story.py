@@ -31,6 +31,7 @@ try:
     from instagrapi import Client
     from instagrapi.exceptions import (
         BadPassword,
+        ChallengeError,
         ChallengeRequired,
         LoginRequired,
         TwoFactorRequired,
@@ -208,10 +209,14 @@ def login(
     except BadPassword:
         logger.error("Неверный логин или пароль.")
         sys.exit(4)
-    except ChallengeRequired:
+    except (ChallengeRequired, ChallengeError) as exc:
         logger.error(
-            "Instagram требует прохождения challenge (подтверждение по почте/SMS). "
-            "Залогиньтесь вручную в браузере с того же IP и попробуйте снова."
+            "Instagram требует прохождения challenge: %s\n"
+            "Решение: откройте Instagram на телефоне/в браузере, "
+            "найдите уведомление 'Подозрительный вход' и нажмите 'Это был я'. "
+            "Также проверьте email, привязанный к аккаунту. "
+            "Затем перезапустите скрипт.",
+            type(exc).__name__,
         )
         sys.exit(4)
 
