@@ -31,11 +31,12 @@ try:
     from instagrapi import Client
     from instagrapi.exceptions import (
         BadPassword,
+        ChallengeError,
         ChallengeRequired,
         LoginRequired,
         TwoFactorRequired,
     )
-    from instagrapi.types import StoryLink
+    from instagrapi.types import StoryLink, StorySticker
 except ImportError as exc:
     print(
         "Не удалось импортировать instagrapi. Установите зависимости:\n"
@@ -208,10 +209,14 @@ def login(
     except BadPassword:
         logger.error("Неверный логин или пароль.")
         sys.exit(4)
-    except ChallengeRequired:
+    except (ChallengeRequired, ChallengeError) as exc:
         logger.error(
-            "Instagram требует прохождения challenge (подтверждение по почте/SMS). "
-            "Залогиньтесь вручную в браузере с того же IP и попробуйте снова."
+            "Instagram требует прохождения challenge: %s\n"
+            "Решение: откройте Instagram на телефоне/в браузере, "
+            "найдите уведомление 'Подозрительный вход' и нажмите 'Это был я'. "
+            "Также проверьте email, привязанный к аккаунту. "
+            "Затем перезапустите скрипт.",
+            type(exc).__name__,
         )
         sys.exit(4)
 
@@ -229,12 +234,30 @@ def upload_story(
     logger: logging.Logger,
 ) -> object:
     links: list[StoryLink] = []
+    stickers: list[StorySticker] = []
     if link_url:
-        link = StoryLink(webUri=link_url)
-        links.append(link)
         if link_text:
+            # Кастомный link-стикер с произвольным текстом
+            # (instagrapi не поддерживает text через StoryLink, поэтому конструируем StorySticker напрямую)
+            link_sticker = StorySticker(
+                type="story_link",
+                x=0.5,
+                y=0.5,
+                z=0,
+                width=0.51,
+                height=0.07,
+                rotation=0.0,
+                extra=dict(
+                    link_type="web",
+                    url=str(link_url),
+                    link_text=link_text,
+                    tap_state_str_id="link_sticker_default",
+                ),
+            )
+            stickers.append(link_sticker)
             logger.info("Добавлен Link-стикер: %s (текст: %s)", link_url, link_text)
         else:
+            links.append(StoryLink(webUri=link_url))
             logger.info("Добавлен Link-стикер: %s", link_url)
 
     logger.info("Загружаем story (%s)...", image_path.name)
@@ -242,6 +265,7 @@ def upload_story(
         path=image_path,
         caption=caption or "",
         links=links,
+        stickers=stickers,
     )
     logger.info(
         "Story успешно опубликована. id=%s, code=%s",
@@ -309,13 +333,16 @@ def main() -> int:
         logger,
     )
 
-    if args.dry_run:
-        logger.info("[DRY-RUN] Фото подготовлено: %s. Логин и публикация пропущены.", prepared)
-        return 0
-
-    # 3. Логин
+    # 3. Логин (включая dry-run — чтобы проверить креды и сессию)
     username, password, totp_seed, proxy = get_credentials(logger)
     cl = login(username, password, totp_seed, proxy, session_file, logger)
+
+    if args.dry_run:
+        logger.info(
+            "[DRY-RUN] Логин успешен, фото подготовлено: %s. Реальная публикация пропущена.",
+            prepared,
+        )
+        return 0
 
     # 4. Публикация
     link_cfg = cfg.get("link_sticker", {})
