@@ -2,7 +2,7 @@
   "media_dir": "media",
   "posted_dir": "posted",
   "session_file": "sessions/session.json",
-  "selection": "random",
+  "selection": "alphabetical",
   "move_after_post": true,
 
   "link_sticker": {
